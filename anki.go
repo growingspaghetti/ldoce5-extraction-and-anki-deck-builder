@@ -23,9 +23,10 @@ type entryAsset struct {
 }
 
 type head struct {
-	Str  string `xml:",innerxml"`
-	Html template.HTML
-	Mp3  string
+	Str   string `xml:",innerxml"`
+	Html  template.HTML
+	Mp3   string
+	Thumb template.HTML
 }
 
 type sense struct {
@@ -53,10 +54,14 @@ func compileAnkiDeck() {
 	}
 	defer anki.Close()
 
-	tmpl := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{range $i,$v := .Senses}}<h2>{{$t}}[{{inc $i}}]\t[sount:media/{{$m}}]\t</h2>\t[sound:{{$v.Mp3}}]\t{{$v.Html}}<hr>{{$h}}\n{{end}}"
+	tmpl := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
 	funcMap := template.FuncMap{
-		"inc": func(i int) int {
-			return i + 1
+		"inc": func(i int, senses []sense) string {
+			if len(senses) > 1 {
+				return fmt.Sprintf("(%d)", i+1)
+			} else {
+				return ""
+			}
 		},
 	}
 	t, err := template.New("sample").Funcs(funcMap).Parse(tmpl)
@@ -65,7 +70,7 @@ func compileAnkiDeck() {
 	}
 
 	for _, x := range xmls {
-		fmt.Println(x)
+		fmt.Printf("\r adding to your anki file.. %s", x)
 		b, err := ioutil.ReadFile(x)
 		if err != nil {
 			panic(err)
@@ -87,24 +92,30 @@ func compileAnkiDeck() {
 				et.Senses[i].Mp3 = concatenateMp3s(audioFiles)
 			}
 		}
-		//et.EntryAsset.Str = "" //formatEntryAsset(p.EntryAsset.Str)
-		et.Head.Str = replacer.Replace(styleApplyer.Replace(et.Head.Str))
 		for i := 0; i < len(et.Senses); i++ {
-			et.Senses[i].Str = replacer.Replace(styleApplyer.Replace(et.Senses[i].Str))
+			thumbFiles := thumbMatcher.FindAllStringSubmatch(et.Head.Str+et.Senses[i].Str, -1)
+			for _, t := range thumbFiles {
+				et.Head.Thumb += template.HTML(fmt.Sprintf(`<img src="media/%s">`, t[1]))
+			}
 		}
-
-		// if exampleAudioFiles != nil {
-		// 	et.Head.Mp3 = titleAudio[1]
-		// }
-
+		et.Head.Str = applyCleaning(et.Head.Str)
+		for i := 0; i < len(et.Senses); i++ {
+			et.Senses[i].Str = applyCleaning(et.Senses[i].Str)
+		}
 		mapStrToHtml(&et)
-		//fmt.Printf("%#v\n", et)
 		out := new(bytes.Buffer)
 		t.Execute(out, et)
 		if _, err = anki.WriteString(out.String()); err != nil {
 			panic(err)
 		}
 	}
+}
+
+func applyCleaning(s string) string {
+	s = replacer.Replace(styleApplyer.Replace(s))
+	s = selfClosingMatcher.ReplaceAllString(s, "")
+	s = asFilterMatcher.ReplaceAllString(s, "")
+	return idCleaner.ReplaceAllString(s, "")
 }
 
 func concatenateMp3s(files [][]string) string {
@@ -146,6 +157,10 @@ var (
 	titleMatcher        = regexp.MustCompile(`<hwd>(.*?)</hwd>`)
 	titleAudioMatcher   = regexp.MustCompile(`resource="GB_HWD_PRON".*?topic="(.*?\.mp3)"`)
 	exampleAudioMatcher = regexp.MustCompile(`resource="EXA_PRON".*?topic="(.*?\.mp3)"`)
+	selfClosingMatcher  = regexp.MustCompile(`<span [^>]+?/>"`)
+	asFilterMatcher     = regexp.MustCompile(`as_filter="[^"]+"`)
+	thumbMatcher        = regexp.MustCompile(`thumb="(thumbnail/[^"]+?)"`)
+	idCleaner           = regexp.MustCompile(`id="[^"]+"`)
 	replacer            *strings.Replacer
 	styleApplyer        *strings.Replacer
 )
@@ -162,40 +177,41 @@ func init() {
 	styleMap := make([]string, 0)
 	styleMap = append(styleMap, "<HWD", "<HWD style='color:#585800;'")
 	styleMap = append(styleMap, "class=\"sensenum\"", "style='padding:5px;font-weight:bold;'")
-
+	styleMap = append(styleMap, "<INFLX", "<INFLX style='display:none'")
+	styleMap = append(styleMap, "<Refs", "<Refs style='display:none'")
+	styleMap = append(styleMap, "<ACTIV", "<ACTIV style='color:white;background-color:#839a5c;font-weight:bold;padding:6px;'")
+	styleMap = append(styleMap, makePaddingAttriubute("HYPHENATION")...)
 	styleMap = append(styleMap, "<EXAMPLE", "<EXAMPLE style='color:#0000A0;text-align:left;padding:6px;'")
-
+	styleMap = append(styleMap, makePaddingAttriubute("SYN")...)
+	styleMap = append(styleMap, "<REFHWD", "<REFHWD style='color:#585800'")
 	styleMap = append(styleMap, makePaddingAttriubute("BASE")...)
 	styleApplyer = strings.NewReplacer(styleMap...)
 
 	replaceMap := make([]string, 0)
-	replaceMap = append(replaceMap, makeClosingTag("HWD", "b")...)
+	//replaceMap = append(replaceMap, makeClosingTag("HWD", "b")...)
 	replaceMap = append(replaceMap, makeClosingTag("BASE", "b")...)
 	replaceMap = append(replaceMap, makeClosingTag("POS", "b")...)
-	replaceMap = append(replaceMap, makePaddingAttriubute("HYPHENATION")...)
 	replaceMap = append(replaceMap, makeClosingTag("HYPHENATION", "span")...)
-	replaceMap = append(replaceMap, makePaddingAttriubute("INFLX")...)
 	replaceMap = append(replaceMap, makeClosingTag("INFLX", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("GRAM", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("PRON", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("PronCode", "span")...)
-	replaceMap = append(replaceMap, makePaddingAttriubute("SYN")...)
 	replaceMap = append(replaceMap, makeClosingTag("SYN", "b")...)
 	replaceMap = append(replaceMap, makeClosingTag("REGISTERLAB", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("SE_EntryAssets", "span")...)
-	replaceMap = append(replaceMap, makeClosingTag("PROPFORMPREP", "span")...)
-	replaceMap = append(replaceMap, makeClosingTag("GramExa", "span")...)
+	replaceMap = append(replaceMap, makeClosingTag("LEXVAR", "span")...)
+	replaceMap = append(replaceMap, makeClosingTag("PROPFORMPREP", "p")...)
+	replaceMap = append(replaceMap, makeClosingTag("GramExa", "p")...)
+	replaceMap = append(replaceMap, makeClosingTag("PROPFORM", "p")...)
 	replaceMap = append(replaceMap, makeClosingTag("OPP", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("EXPR", "b")...)
-	replaceMap = append(replaceMap, "<ACTIV", "<ACTIV style='color:#0000A0;font-weight:bold;padding:6px;'")
 	replaceMap = append(replaceMap, makeClosingTag("ACTIV", "div")...)
-	replaceMap = append(replaceMap, makeClosingTag("EXAMPLE", "div")...)
-	replaceMap = append(replaceMap, makeClosingTag("DEF", "div")...)
-	replaceMap = append(replaceMap, "<REFHWD", "<REFHWD style='color:#585800'")
+	replaceMap = append(replaceMap, makeClosingTag("EXAMPLE", "p")...)
+	//replaceMap = append(replaceMap, makeClosingTag("DEF", "div")...)
 	replaceMap = append(replaceMap, makeClosingTag("REFHWD", "b")...)
-	replaceMap = append(replaceMap, makeClosingTag("LEXUNIT", "b")...)
-	replaceMap = append(replaceMap, makeClosingTag("COLLOINEXA", "b")...)
-	replaceMap = append(replaceMap, makeClosingTag("RELATEDWD", "b")...)
+	replaceMap = append(replaceMap, makeClosingTag("LEXUNIT", "span")...)
+	replaceMap = append(replaceMap, makeClosingTag("COLLOINEXA", "span")...)
+	replaceMap = append(replaceMap, makeClosingTag("RELATEDWD", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("Refs", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("GLOSS", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("FREQ", "b")...)

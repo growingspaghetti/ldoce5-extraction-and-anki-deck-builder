@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -39,11 +40,11 @@ type segmentfile struct {
 }
 
 func compileDirectoryInfo(settings byteblockSettings) map[int]directory {
-	nameFile, err := os.ReadFile(settings.target + "/dirs.skn/NAME.tda")
+	nameFileContents, err := os.ReadFile(settings.target + "/dirs.skn/NAME.tda")
 	if err != nil {
 		panic(err)
 	}
-	names := bytes.Split(nameFile, []byte("\x00"))
+	names := bytes.Split(nameFileContents, []byte("\x00"))
 	parentRelations, err := os.Open(settings.target + "/dirs.skn/dirs.dat")
 	if err != nil {
 		panic(err)
@@ -91,11 +92,11 @@ func byteToInt(b []byte) int {
 }
 
 func compileSegmentFileInfo(settings byteblockSettings) []segmentfile {
-	nameFile, err := os.ReadFile(settings.target + "/files.skn/NAME.tda")
+	nameFileContents, err := os.ReadFile(settings.target + "/files.skn/NAME.tda")
 	if err != nil {
 		panic(err)
 	}
-	names := bytes.Split(nameFile, []byte("\x00"))
+	names := bytes.Split(nameFileContents, []byte("\x00"))
 	segmentInfoTable, err := os.Open(settings.target + "/files.skn/files.dat")
 	if err != nil {
 		panic(err)
@@ -185,10 +186,7 @@ func extract(settings byteblockSettings) {
 
 	accumulatoryBase := 0
 	fileIndex := 0
-	for i, chunk := range chunkTable {
-		if i > 5 {
-			break
-		}
+	for _, chunk := range chunkTable {
 		raw, err := deflateFromChunk(chunks, chunk)
 		if err != nil {
 			if err == io.EOF {
@@ -257,13 +255,15 @@ var (
 	dataPath string = "/home/ryoji/archive/ldoce5/ldoce5.data/"
 )
 
-func main() {
+func extractData() {
 	if len(os.Args) > 1 {
 		dataPath = os.Args[1]
 		if !strings.HasSuffix(dataPath, "/") {
 			dataPath += "/"
 		}
 	}
+
+	fmt.Println("extracting title audio files")
 	titleAudioSet := byteblockSettings{
 		target:    dataPath + "gb_hwd_pron.skn",
 		assetType: "media",
@@ -279,6 +279,8 @@ func main() {
 		fileParentEnd:      16,
 	}
 	extract(titleAudioSet)
+
+	fmt.Println("extracting example audio files")
 	exampleAudioSet := byteblockSettings{
 		target:    dataPath + "exa_pron.skn",
 		assetType: "media",
@@ -294,6 +296,8 @@ func main() {
 		fileParentEnd:      18,
 	}
 	extract(exampleAudioSet)
+
+	fmt.Println("extracting image files")
 	imageSet := byteblockSettings{
 		target:    dataPath + "picture.skn",
 		assetType: "media",
@@ -309,6 +313,8 @@ func main() {
 		fileParentEnd:      15,
 	}
 	extract(imageSet)
+
+	fmt.Println("extracting main text files")
 	mainTextSet := byteblockSettings{
 		target:    dataPath + "fs.skn",
 		assetType: "text",
@@ -324,6 +330,8 @@ func main() {
 		fileParentEnd:      18,
 	}
 	extract(mainTextSet)
+
+	fmt.Println("extracting the text for common errors")
 	commonErrorSet := byteblockSettings{
 		target:    dataPath + "common_errors.skn",
 		assetType: "common-errors",
@@ -339,6 +347,8 @@ func main() {
 		fileParentEnd:      13,
 	}
 	extract(commonErrorSet)
+
+	fmt.Println("extracting collocations")
 	collocationSet := byteblockSettings{
 		target:    dataPath + "collocations.skn",
 		assetType: "collocations",
@@ -349,11 +359,13 @@ func main() {
 		// UBYTE+ULONG+U24+U24+USHORT+U24+USHORT=1+4+3+3+2+3+2
 		fileBlockLen:       18,
 		fileRawOffsetBegin: 1,
-		fileRawOffsetEnd:   4,
+		fileRawOffsetEnd:   5,
 		fileParentBegin:    16,
 		fileParentEnd:      18,
 	}
 	extract(collocationSet)
+
+	fmt.Println("extracting word lists")
 	wordListSet := byteblockSettings{
 		target:    dataPath + "word_lists.skn",
 		assetType: "word-lists",
@@ -369,5 +381,9 @@ func main() {
 		fileParentEnd:      9,
 	}
 	extract(wordListSet)
+}
+
+func main() {
+	extractData()
 	compileAnkiDeck()
 }
