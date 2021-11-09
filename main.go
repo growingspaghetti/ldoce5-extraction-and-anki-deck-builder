@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -78,6 +79,10 @@ func byteToInt(b []byte) int {
 		return int(b[0])
 	case 2:
 		return int(binary.LittleEndian.Uint16(b))
+	case 3:
+		u4 := make([]byte, 4)
+		copy(u4, b)
+		return int(binary.LittleEndian.Uint32(u4))
 	case 4:
 		return int(binary.LittleEndian.Uint32(b))
 	default:
@@ -181,6 +186,9 @@ func extract(settings byteblockSettings) {
 	accumulatoryBase := 0
 	fileIndex := 0
 	for i, chunk := range chunkTable {
+		if i > 5 {
+			break
+		}
 		raw, err := deflateFromChunk(chunks, chunk)
 		if err != nil {
 			if err == io.EOF {
@@ -188,7 +196,7 @@ func extract(settings byteblockSettings) {
 			}
 			panic(err)
 		}
-		for segmentFiles[fileIndex].rawOffset < accumulatoryBase+chunk.rawSize {
+		for fileIndex < len(segmentFiles) && segmentFiles[fileIndex].rawOffset < accumulatoryBase+chunk.rawSize {
 			relativeOffset := segmentFiles[fileIndex].rawOffset - accumulatoryBase
 			data := fileData(segmentFiles, fileIndex, raw, relativeOffset)
 			writeFile(segmentFiles[fileIndex], data, directories, settings.assetType)
@@ -199,12 +207,17 @@ func extract(settings byteblockSettings) {
 }
 
 func fileData(segmentFiles []segmentfile, index int, chunk []byte, offset int) []byte {
+	var data []byte
 	if index == len(segmentFiles)-1 {
-		return chunk[offset:]
+		data = chunk[offset:]
 	} else {
 		size := segmentFiles[index+1].rawOffset - segmentFiles[index].rawOffset
-		return chunk[offset : offset+size]
+		data = chunk[offset : offset+size]
 	}
+	if strings.Contains(".xml.html.css", filepath.Ext(segmentFiles[index].name)) {
+		data = bytes.Replace(data, []byte("\x00"), []byte{}, -1)
+	}
+	return data
 }
 
 func writeFile(segmentFile segmentfile, data []byte, directories map[int]directory, category string) {
@@ -311,4 +324,50 @@ func main() {
 		fileParentEnd:      18,
 	}
 	extract(mainTextSet)
+	commonErrorSet := byteblockSettings{
+		target:    dataPath + "common_errors.skn",
+		assetType: "common-errors",
+		// UBYTE+UBYTE+USHORT+UBYTE=1+1+2+1
+		directoryBlockLen:    5,
+		directoryParentBegin: 4,
+		directoryParentEnd:   5,
+		// UBYTE+U24+USHORT+USHORT+USHORT+USHORT+UBYTE=1+3+2+2+2+2+1
+		fileBlockLen:       13,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   4,
+		fileParentBegin:    12,
+		fileParentEnd:      13,
+	}
+	extract(commonErrorSet)
+	collocationSet := byteblockSettings{
+		target:    dataPath + "collocations.skn",
+		assetType: "collocations",
+		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
+		directoryBlockLen:    8,
+		directoryParentBegin: 6,
+		directoryParentEnd:   8,
+		// UBYTE+ULONG+U24+U24+USHORT+U24+USHORT=1+4+3+3+2+3+2
+		fileBlockLen:       18,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   4,
+		fileParentBegin:    16,
+		fileParentEnd:      18,
+	}
+	extract(collocationSet)
+	wordListSet := byteblockSettings{
+		target:    dataPath + "word_lists.skn",
+		assetType: "word-lists",
+		// UBYTE+UBYTE+UBYTE+UBYTE=1+1+1+1
+		directoryBlockLen:    4,
+		directoryParentBegin: 3,
+		directoryParentEnd:   4,
+		// UBYTE+U24+UBYTE+UBYTE+UBYTE+UBYTE+UBYTE=1+3+1+1+1+1+1
+		fileBlockLen:       9,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   4,
+		fileParentBegin:    8,
+		fileParentEnd:      9,
+	}
+	extract(wordListSet)
+	compileAnkiDeck()
 }

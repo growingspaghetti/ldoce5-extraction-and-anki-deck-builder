@@ -1,0 +1,4 @@
+github.com/dmulholland/mp3lib v0.0.0-20190407131416-50ad4bfbe332 h1:zh+x3xrRRobJ+O6Jy+u+8+TSj7qzuW4EL8Hkf5cbAck=
+github.com/dmulholland/mp3lib v0.0.0-20190407131416-50ad4bfbe332/go.mod h1:U3TgSK0lA/gbTgENpBTSNn/OmowG1hr07mKQqqvbLxE=
+github.com/hyacinthus/mp3join v0.0.0-20190710105654-d46eaeeb9552 h1:cjR5hraUrLrNBQ6lXsjd/VDtJf7+3TOow++DaTAj8r8=
+github.com/hyacinthus/mp3join v0.0.0-20190710105654-d46eaeeb9552/go.mod h1:eQzsT6lJmJ/wcTqoHaHfuadmI1lzaHjrdDLO4qKiqcI=
