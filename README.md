@@ -25,6 +25,14 @@ In order to open media files with Anki, you need to move the **media** directory
 
 ![anki-preview-5.png](./anki-preview-5.png)
 
+They are the screen captures of what you see when the anki file building has been completed. There are 86k mini entries, and its file size sums up to about 110 MB.
+
+![anki-preview-7.png](./anki-preview-7.png)<br>![anki-preview-9.png](./anki-preview-9.png)
+
+When you import these entries into your Anki, don't forget to select the "Import even if existing note has same first field" option.
+
+![ldoce-preview-10.png](./ldoce-preview-10.png)
+
 **Download**
  - https://github.com/growingspaghetti/ldoce5-extraction-and-anki-deck-builder/releases/
 
@@ -43,3 +51,26 @@ Thanks to the author of https://github.com/ciscorn/ldoce5viewer/blob/master/ldoc
 ![anki-preview-6.jpg](./anki-preview-6.jpg)
 
 One of the tricky points was that it wasn't the end of the process that I decompressed data by slicing the concatenated content.tda with zlib reader. It became raw, nevertheless the resulting chunk was also in the form of concatenated files. To slice it into proper files with paths, it was required to seek the segmentation info alongside with the directory-entry-relation table.
+
+The order of block alignment is straight forward for the fact that it agrees with the one written in config.cft.
+
+```
+[DAT]
+PATH = files.dat
+$TYPE               = UBYTE
+$CONTENT = DATA
+$CONTENT,OFFSET     = ULONG
+$NAME = DATA
+$NAME,OFFSET        = U24
+$TITLE = DATA
+$TITLE,OFFSET       = USHORT
+$A_FILE = USHORT
+$TEXTTITLE = DATA
+$TEXTTITLE,OFFSET   = USHORT
+$A_DIRS             = USHORT
+PAGESIZE = 256
+```
+... The corresponding .dat file has a reading cycle of 1+4+3+2+2+2=14 byte-length seeking. The occurence of information is corresponding to this description as well. 
+
+That is,
+[[1 byte: type info][4 bytes: file content segment offset][3 bytes: -][2 bytes: -][2 bytes: -][2 bytes: pointer to parent directory]]

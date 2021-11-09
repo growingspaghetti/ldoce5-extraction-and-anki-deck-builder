@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -124,6 +125,10 @@ func concatenateMp3s(files [][]string) string {
 	for _, file := range files {
 		f, err := os.Open("media/" + file[1])
 		if err != nil {
+			// panic: open media/p008_001/p008_00155/p008-001559957.mp3: no such file or directory
+			if errors.Is(err, os.ErrNotExist) {
+				return ""
+			}
 			panic(err)
 		}
 		defer f.Close()
