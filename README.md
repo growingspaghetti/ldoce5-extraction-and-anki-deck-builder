@@ -1,6 +1,6 @@
-# LDOCE5 extraction and Anki deck compile
+# LDOCE5 extraction and Anki deck builder
 
-This is an ultimate tool to build a ultra massive anki deck from LDOCE5.
+This is an ultimate tool to build an ultra massive anki deck from LDOCE5.
 
 Japanese edition:
   https://www.amazon.co.jp/%E3%83%AD%E3%83%B3%E3%82%B0%E3%83%9E%E3%83%B3%E7%8F%BE%E4%BB%A3%E8%8B%B1%E8%8B%B1%E8%BE%9E%E5%85%B8-5%E8%A8%82%E7%89%88-DVD-ROM%E4%BB%98/dp/4342100940
@@ -9,7 +9,7 @@ This software extracts all text, image files and MP3 files, then creates **anki.
 
 In addition, it merges audio files into one when a page has a multiple of them so as to avail the Anki's autoplay facility.
 
-As for the DVD-ROM, I tested against the Japanese one publised by Pearson alone and the extraction finished successfully.
+As for the DVD-ROM, I tested against the Japanese one published by Pearson alone and the extraction finished successfully.
 
 ![anki-preview-4.png](./anki-preview-4.png)
 
@@ -21,9 +21,12 @@ As for the DVD-ROM, I tested against the Japanese one publised by Pearson alone 
 
 In order to open media files with Anki, you need to move the **media** directory that this application generated under Anki's collection.media.
 
-**!!You shouldn't try to open the html file with a browser. It breaks the window!**
+**!! You shouldn't try to open the html file with a browser. It breaks the window !!**
 
 ![anki-preview-5.png](./anki-preview-5.png)
+
+**Download**
+ - https://github.com/growingspaghetti/ldoce5-extraction-and-anki-deck-builder/releases/
 
 ---
 
@@ -33,3 +36,10 @@ In order to open media files with Anki, you need to move the **media** directory
 
 絶対に超巨大なhtml形式の単語帳を普通のブラウザで表示しようとしないで下さい！画面が固まります！
 
+---
+
+Thanks to the author of https://github.com/ciscorn/ldoce5viewer/blob/master/ldoce5viewer/ldoce5/idmreader.py, the following diagram shows the data structure.
+
+![anki-preview-6.jpg](./anki-preview-6.jpg)
+
+One of the tricky points was that it wasn't the end of the process that I decompressed data by slicing the concatenated content.tda with zlib reader. It became raw, nevertheless the resulting chunk was also in the form of concatenated files. To slice it into proper files with paths, it was required to seek the segmentation info alongside with the directory-entry-relation table.
