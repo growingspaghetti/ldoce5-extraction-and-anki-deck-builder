@@ -4,13 +4,24 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
-	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 )
+
+type byteblockSettings struct {
+	target               string
+	assetType            string
+	directoryBlockLen    int
+	directoryParentBegin int
+	directoryParentEnd   int
+	fileBlockLen         int
+	fileRawOffsetBegin   int
+	fileRawOffsetEnd     int
+	fileParentBegin      int
+	fileParentEnd        int
+}
 
 type chunk struct {
 	index, compressedSize, rawSize int
@@ -26,20 +37,20 @@ type segmentfile struct {
 	name                  string
 }
 
-func compileDirectoryInfo() map[int]directory {
-	nameFile, err := os.ReadFile("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/NAME.tda")
+func compileDirectoryInfo(settings byteblockSettings) map[int]directory {
+	nameFile, err := os.ReadFile(settings.target + "/dirs.skn/NAME.tda")
 	if err != nil {
 		panic(err)
 	}
 	names := bytes.Split(nameFile, []byte("\x00"))
-	parentRelations, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/dirs.dat")
+	parentRelations, err := os.Open(settings.target + "/dirs.skn/dirs.dat")
 	if err != nil {
 		panic(err)
 	}
 	defer parentRelations.Close()
 
 	directories := make(map[int]directory)
-	parentInfo := make([]byte, 9)
+	parentInfo := make([]byte, settings.directoryBlockLen)
 	for i := 0; ; i++ {
 		read, err := parentRelations.Read(parentInfo)
 		if err != nil {
@@ -48,31 +59,45 @@ func compileDirectoryInfo() map[int]directory {
 			}
 			panic(err)
 		}
-		if read != 9 {
+		if read != settings.directoryBlockLen {
 			break
 		}
+		b, e := settings.directoryParentBegin, settings.directoryParentEnd
 		directories[i] = directory{
 			index:  i,
-			parent: int(binary.LittleEndian.Uint16(parentInfo[7:9])),
+			parent: byteToInt(parentInfo[b:e]),
 			name:   string(names[i]),
 		}
 	}
 	return directories
 }
 
-func compileSegmentFileInfo() []segmentfile {
-	nameFile, err := os.ReadFile("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/NAME.tda")
+func byteToInt(b []byte) int {
+	switch len(b) {
+	case 1:
+		return int(b[0])
+	case 2:
+		return int(binary.LittleEndian.Uint16(b))
+	case 4:
+		return int(binary.LittleEndian.Uint32(b))
+	default:
+		panic(strconv.Itoa(len(b)) + "is illegal value")
+	}
+}
+
+func compileSegmentFileInfo(settings byteblockSettings) []segmentfile {
+	nameFile, err := os.ReadFile(settings.target + "/files.skn/NAME.tda")
 	if err != nil {
 		panic(err)
 	}
 	names := bytes.Split(nameFile, []byte("\x00"))
-	segmentInfoTable, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/files.skn/files.dat")
+	segmentInfoTable, err := os.Open(settings.target + "/files.skn/files.dat")
 	if err != nil {
 		panic(err)
 	}
 	defer segmentInfoTable.Close()
 	files := make([]segmentfile, 0)
-	segmentInfo := make([]byte, 16)
+	segmentInfo := make([]byte, settings.fileBlockLen)
 	for i := 0; ; i++ {
 		read, err := segmentInfoTable.Read(segmentInfo)
 		if err != nil {
@@ -81,21 +106,23 @@ func compileSegmentFileInfo() []segmentfile {
 			}
 			panic(err)
 		}
-		if read != 16 {
+		if read != settings.fileBlockLen {
 			break
 		}
+		b1, e1 := settings.fileRawOffsetBegin, settings.fileRawOffsetEnd
+		b2, e2 := settings.fileParentBegin, settings.fileParentEnd
 		files = append(files, segmentfile{
 			index:     i,
-			rawOffset: int(binary.LittleEndian.Uint32(segmentInfo[1:5])),
-			dir:       int(binary.LittleEndian.Uint16(segmentInfo[14:16])),
+			rawOffset: byteToInt(segmentInfo[b1:e1]),
+			dir:       byteToInt(segmentInfo[b2:e2]),
 			name:      string(names[i]),
 		})
 	}
 	return files
 }
 
-func compileChunkInfo() []chunk {
-	chunkInfo, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda.tdz")
+func compileChunkInfo(settings byteblockSettings) []chunk {
+	chunkInfo, err := os.Open(settings.target + "/files.skn/CONTENT.tda.tdz")
 	if err != nil {
 		panic(err)
 	}
@@ -113,23 +140,39 @@ func compileChunkInfo() []chunk {
 		if read != 8 {
 			break
 		}
-		zipSize := uint32(binary.LittleEndian.Uint32(b[4:]))
-		rawSize := uint32(binary.LittleEndian.Uint32(b[:4]))
+		zipSize := byteToInt(b[4:])
+		rawSize := byteToInt(b[:4])
 		chunks = append(chunks, chunk{
 			index:          i,
-			compressedSize: int(zipSize),
-			rawSize:        int(rawSize),
+			compressedSize: zipSize,
+			rawSize:        rawSize,
 		})
 	}
 	return chunks
 }
 
-func extractTitleAudio() {
-	chunkTable := compileChunkInfo()
-	segmentFiles := compileSegmentFileInfo()
-	directories := compileDirectoryInfo()
+func deflateFromChunk(chunks *os.File, chunk chunk) ([]byte, error) {
+	zip := make([]byte, chunk.compressedSize)
+	if _, err := chunks.Read(zip); err != nil {
+		return nil, err
+	}
+	zipReader, err := zlib.NewReader(bytes.NewReader(zip))
+	if err != nil {
+		panic(err)
+	}
+	defer zipReader.Close()
+	buf := bytes.NewBuffer(make([]byte, 0))
+	if _, err := io.Copy(buf, zipReader); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
 
-	chunks, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda")
+func extract(settings byteblockSettings) {
+	chunkTable := compileChunkInfo(settings)
+	segmentFiles := compileSegmentFileInfo(settings)
+	directories := compileDirectoryInfo(settings)
+	chunks, err := os.Open(settings.target + "/files.skn/CONTENT.tda")
 	if err != nil {
 		panic(err)
 	}
@@ -138,33 +181,17 @@ func extractTitleAudio() {
 	accumulatoryBase := 0
 	fileIndex := 0
 	for i, chunk := range chunkTable {
-		if i > 5 {
-			break
-		}
-		zip := make([]byte, chunk.compressedSize)
-		if _, err := chunks.Read(zip); err != nil {
-			if err == io.EOF {
-				break
-			}
-			panic(err)
-		}
-		zipReader, err := zlib.NewReader(bytes.NewReader(zip))
+		raw, err := deflateFromChunk(chunks, chunk)
 		if err != nil {
-			panic(err)
-		}
-		defer zipReader.Close()
-		buf := bytes.NewBuffer(make([]byte, 0))
-		if _, err := io.Copy(buf, zipReader); err != nil {
 			if err == io.EOF {
 				break
 			}
 			panic(err)
 		}
-		raw := buf.Bytes()
 		for segmentFiles[fileIndex].rawOffset < accumulatoryBase+chunk.rawSize {
 			relativeOffset := segmentFiles[fileIndex].rawOffset - accumulatoryBase
 			data := fileData(segmentFiles, fileIndex, raw, relativeOffset)
-			writeFile(segmentFiles[fileIndex], data, directories)
+			writeFile(segmentFiles[fileIndex], data, directories, settings.assetType)
 			fileIndex++
 		}
 		accumulatoryBase += chunk.rawSize
@@ -180,13 +207,13 @@ func fileData(segmentFiles []segmentfile, index int, chunk []byte, offset int) [
 	}
 }
 
-func writeFile(segmentFile segmentfile, data []byte, directories map[int]directory) {
+func writeFile(segmentFile segmentfile, data []byte, directories map[int]directory, category string) {
 	path := buildPath(directories, segmentFile)
-	err := os.MkdirAll("media"+path, 0777)
+	err := os.MkdirAll(category+path, 0777)
 	if err != nil {
 		panic(err)
 	}
-	if err := os.WriteFile("media"+path+"/"+segmentFile.name, data, 0644); err != nil {
+	if err := os.WriteFile(category+path+"/"+segmentFile.name, data, 0644); err != nil {
 		panic(err)
 	}
 }
@@ -213,248 +240,75 @@ func buildPath(directories map[int]directory, root segmentfile) string {
 	}
 }
 
+var (
+	dataPath string = "/home/ryoji/archive/ldoce5/ldoce5.data/"
+)
+
 func main() {
-	extractTitleAudio()
-	//fmt.Println(compileSegmentFileInfo())
-	//fmt.Println(compileSegmentDirInfo())
-}
-
-func decompressChunks() {
-	// decompression of chunks
-	chunkInfo, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda.tdz")
-	if err != nil {
-		panic(err)
-	}
-	defer chunkInfo.Close()
-	chunks, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda")
-	if err != nil {
-		panic(err)
-	}
-	defer chunks.Close()
-
-	b := make([]byte, 8)
-	for i := 0; ; i++ {
-		read, err := chunkInfo.Read(b)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			panic(err)
-		}
-		if read != 8 {
-			break
-		}
-		zipSize := uint32(binary.LittleEndian.Uint32(b[4:]))
-		zip := make([]byte, zipSize)
-		if _, err := chunks.Read(zip); err != nil {
-			if err == io.EOF {
-				break
-			}
-			panic(err)
-		}
-		zipReader, err := zlib.NewReader(bytes.NewReader(zip))
-		if err != nil {
-			panic(err)
-		}
-		byteArray := new(bytes.Buffer)
-		io.Copy(byteArray, zipReader)
-		if err := os.WriteFile("chunks/"+strconv.Itoa(i), byteArray.Bytes(), 0644); err != nil {
-			panic(err)
+	if len(os.Args) > 1 {
+		dataPath = os.Args[1]
+		if !strings.HasSuffix(dataPath, "/") {
+			dataPath += "/"
 		}
 	}
-}
-
-func mainaaa() {
-	f, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda.tdz")
-	if err != nil {
-		log.Fatal("fail")
+	titleAudioSet := byteblockSettings{
+		target:    dataPath + "gb_hwd_pron.skn",
+		assetType: "media",
+		// U24+USHORT+USHORT+USHORT=3+2+2+2
+		directoryBlockLen:    9,
+		directoryParentBegin: 7,
+		directoryParentEnd:   9,
+		// UBYTE+ULONG+U24+USHORT+USHORT+USHORT+USHORT=1+4+3+2+2+2+2
+		fileBlockLen:       16,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   5,
+		fileParentBegin:    14,
+		fileParentEnd:      16,
 	}
-	defer f.Close()
-
-	// c, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/CONTENT.tda")
-	// if err != nil {
-	// 	log.Fatal("fail")
-	// }
-	// defer c.Close()
-
-	i := 0
-	b := make([]byte, 4)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			break
-			//log.Fatal("fail", err)
-		}
-		if n != 4 {
-			break
-		}
+	extract(titleAudioSet)
+	exampleAudioSet := byteblockSettings{
+		target:    dataPath + "exa_pron.skn",
+		assetType: "media",
+		// USHORT+UBYTE+U24+UBYTE=2+1+3+1
+		directoryBlockLen:    7,
+		directoryParentBegin: 6,
+		directoryParentEnd:   7,
+		// UBYTE+ULONG+U24+U24+U24+U24+UBYTE=1+4+3+3+3+3+1
+		fileBlockLen:       18,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   5,
+		fileParentBegin:    17,
+		fileParentEnd:      18,
 	}
-
-	fmt.Println(i)
-}
-
-func maine() {
-	dat, err := os.ReadFile("/home/ryoji/archive/ldoce5/ldoce5.data/gb_hwd_pron.skn/files.skn/NAME.tda")
-	if err != nil {
-		log.Fatal("fail")
+	extract(exampleAudioSet)
+	imageSet := byteblockSettings{
+		target:    dataPath + "picture.skn",
+		assetType: "media",
+		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
+		directoryBlockLen:    8,
+		directoryParentBegin: 6,
+		directoryParentEnd:   8,
+		// UBYTE+ULONG+USHORT+USHORT+USHORT+USHORT+USHORT=1+4+2+2+2+2+2
+		fileBlockLen:       15,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   5,
+		fileParentBegin:    13,
+		fileParentEnd:      15,
 	}
-	//47350
-	names := bytes.Split(dat, []byte("\000"))
-	//for _, n := range names {
-	//	fmt.Println(string(n))
-	//}
-	f, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/files.skn/files.dat")
-	if err != nil {
-		log.Fatal("fail")
+	extract(imageSet)
+	mainTextSet := byteblockSettings{
+		target:    dataPath + "fs.skn",
+		assetType: "text",
+		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
+		directoryBlockLen:    8,
+		directoryParentBegin: 7,
+		directoryParentEnd:   8,
+		// UBYTE+ULONG+U24+U24+USHORT+U24+USHORT=1+4+3+3+2+3+2
+		fileBlockLen:       18,
+		fileRawOffsetBegin: 1,
+		fileRawOffsetEnd:   5,
+		fileParentBegin:    16,
+		fileParentEnd:      18,
 	}
-	defer f.Close()
-
-	i := 0
-	b := make([]byte, 16)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			break
-			//log.Fatal("fail", err)
-		}
-		if n != 16 {
-			break
-		}
-		// fmt.Println(uint32(binary.LittleEndian.Uint32(b)))
-	}
-	// 47350
-	fmt.Println(i, len(names))
-}
-
-func maind() {
-	f, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/DIRS.skn/DIRS.dat")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	defer f.Close()
-
-	i := 0
-	b := make([]byte, 2)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			break
-			//log.Fatal("fail", err)
-		}
-		if n != 2 {
-			break
-		}
-		// fmt.Println(uint32(binary.LittleEndian.Uint32(b)))
-	}
-	// 21704
-	fmt.Println(i)
-}
-
-func mainc() {
-	f, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/FILES.skn/FILES.dat")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	defer f.Close()
-
-	i := 0
-	b := make([]byte, 2)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			break
-			//log.Fatal("fail", err)
-		}
-		if n != 2 {
-			break
-		}
-		// fmt.Println(uint32(binary.LittleEndian.Uint32(b)))
-	}
-	// 47350
-	fmt.Println(i)
-}
-
-func mainaa() {
-	dat, err := os.ReadFile("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/NAME.tda")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	// 21706
-	names := bytes.Split(dat, []byte("\000"))
-	// for _, n := range names {
-	// 	fmt.Println(string(n))
-	// }
-	fmt.Println(len(names))
-	f, err := os.Open("/home/ryoji/archive/ldoce5.data/gb_hwd_pron.skn/dirs.skn/dirs.dat")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	defer f.Close()
-
-	i := 0
-	b := make([]byte, 9)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			break
-			//log.Fatal("fail", err)
-		}
-		if n != 9 {
-			break
-		}
-		// fmt.Println(uint32(binary.LittleEndian.Uint32(b)))
-	}
-	// 21706
-	fmt.Println(i, len(names))
-}
-
-func maina() {
-	dat, err := os.ReadFile("/home/ryoji/archive/ldoce5/ldoce5.data/exa_pron.skn/files.skn/NAME.tda")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	names := bytes.Split(dat, []byte("\000"))
-	for _, n := range names {
-		fmt.Println(string(n))
-	}
-	fmt.Println(len(names))
-	f, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/exa_pron.skn/files.skn/CONTENT.tda.tdz")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	defer f.Close()
-
-	c, err := os.Open("/home/ryoji/archive/ldoce5/ldoce5.data/exa_pron.skn/files.skn/CONTENT.tda")
-	if err != nil {
-		log.Fatal("fail")
-	}
-	defer c.Close()
-
-	i := 0
-	b := make([]byte, 8)
-	for ; ; i++ {
-		n, err := f.Read(b)
-		if err != nil {
-			log.Fatal("fail", err)
-		}
-		if n != 8 {
-			break
-		}
-		l := binary.LittleEndian.Uint32(b[4:])
-		size := uint32(l)
-		fmt.Println(size)
-		z := make([]byte, size)
-		a, err := c.Read(z)
-		if err != nil {
-			log.Fatal("fail", err)
-		}
-		if a < 1 {
-			break
-		}
-		if err := os.WriteFile(string(names[i]), z, 0644); err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(uint32(binary.LittleEndian.Uint32(b)))
-	}
-
+	extract(mainTextSet)
 }
