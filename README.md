@@ -76,6 +76,7 @@ That is,
 [[1 byte: type info][4 bytes: file content segment offset][3 bytes: -][2 bytes: -][2 bytes: -][2 bytes: pointer to parent directory]]
 
 ----
+![rust-console-dictionary.png](./rust-console-dictionary.png)
 
 This advanced learner's dictionary doesn't contain a good amount of patterns. For instance, https://idioms.thefreedictionary.com/bruit+about isn't included. At some point, it would be more efficient to use your time with WordNet https://github.com/growingspaghetti/websters-1913-console-dictionary https://dbmx.net/dict/wordnet.tsv, the Farlex idiom dictionary https://www.amazon.co.jp/Farlex-Idioms-Slang-Dictionary-Collection-ebook/dp/B0768WSZ9C, and the Gmail grammar check.
 
