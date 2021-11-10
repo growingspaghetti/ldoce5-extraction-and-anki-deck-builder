@@ -43,7 +43,17 @@ type entry struct {
 	Title      string
 }
 
+type mp3cater struct {
+	sb *strings.Builder
+}
+
 func compileAnkiDeck() {
+	textBody()
+	fmt.Println()
+	fmt.Println("Completed")
+}
+
+func textBody() {
 	pattern := "text/**/*.xml"
 	xmls, err := filepath.Glob(pattern)
 	if err != nil {
@@ -54,8 +64,7 @@ func compileAnkiDeck() {
 		panic(err)
 	}
 	defer anki.Close()
-
-	tmpl := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
+	t := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
 	funcMap := template.FuncMap{
 		"inc": func(i int, senses []sense) string {
 			if len(senses) > 1 {
@@ -65,51 +74,78 @@ func compileAnkiDeck() {
 			}
 		},
 	}
-	t, err := template.New("sample").Funcs(funcMap).Parse(tmpl)
+	tmpl, err := template.New("anki-template").Funcs(funcMap).Parse(t)
 	if err != nil {
 		panic(err)
 	}
+	for i, xml := range xmls {
+		if i%100 == 0 {
+			fmt.Printf("\r adding to your anki file.. %s", xml)
+		}
+		addXmlToAnki(xml, anki, tmpl)
+	}
+}
 
-	for _, x := range xmls {
-		fmt.Printf("\r adding to your anki file.. %s", x)
-		b, err := ioutil.ReadFile(x)
-		if err != nil {
-			panic(err)
-		}
-		et := entry{}
-		xml.Unmarshal(b, &et)
-		et.Title = titleMatcher.FindStringSubmatch(et.EntryAsset.Str)[1]
-		titleAudio := titleAudioMatcher.FindStringSubmatch(et.Head.Str)
-		if titleAudio != nil {
-			et.Head.Mp3 = titleAudio[1]
-		}
-		for i := 0; i < len(et.Senses); i++ {
-			audioFiles := exampleAudioMatcher.FindAllStringSubmatch(et.Senses[i].Str, -1)
-			switch len(audioFiles) {
-			case 0:
-			case 1:
-				et.Senses[i].Mp3 = "media/" + audioFiles[0][1]
-			default:
-				et.Senses[i].Mp3 = concatenateMp3s(audioFiles)
-			}
-		}
-		for i := 0; i < len(et.Senses); i++ {
-			thumbFiles := thumbMatcher.FindAllStringSubmatch(et.Head.Str+et.Senses[i].Str, -1)
-			for _, t := range thumbFiles {
-				et.Head.Thumb += template.HTML(fmt.Sprintf(`<img src="media/%s">`, t[1]))
-			}
-		}
-		et.Head.Str = applyCleaning(et.Head.Str)
-		for i := 0; i < len(et.Senses); i++ {
-			et.Senses[i].Str = applyCleaning(et.Senses[i].Str)
-		}
-		mapStrToHtml(&et)
-		out := new(bytes.Buffer)
-		t.Execute(out, et)
-		if _, err = anki.WriteString(out.String()); err != nil {
-			panic(err)
+func addXmlToAnki(docFile string, anki *os.File, tmpl *template.Template) {
+	doc, err := ioutil.ReadFile(docFile)
+	if err != nil {
+		panic(err)
+	}
+	ent := entry{}
+	xml.Unmarshal(doc, &ent)
+	ent.Title = titleMatcher.FindStringSubmatch(ent.EntryAsset.Str)[1]
+	addMp3s(&ent)
+	addImages(&ent)
+	formatXml(&ent)
+	mapStrToHtml(&ent)
+	out := new(bytes.Buffer)
+	tmpl.Execute(out, ent)
+	if _, err = anki.WriteString(out.String()); err != nil {
+		panic(err)
+	}
+}
+
+func formatXml(ent *entry) {
+	ent.Head.Str = applyCleaning(ent.Head.Str)
+	for i := 0; i < len(ent.Senses); i++ {
+		ent.Senses[i].Str = applyCleaning(ent.Senses[i].Str)
+	}
+}
+
+func addMp3s(ent *entry) {
+	titleAudio := titleAudioMatcher.FindStringSubmatch(ent.Head.Str)
+	if titleAudio != nil {
+		ent.Head.Mp3 = titleAudio[1]
+	}
+	for i := 0; i < len(ent.Senses); i++ {
+		audioFiles := exampleAudioMatcher.FindAllStringSubmatch(ent.Senses[i].Str, -1)
+		switch len(audioFiles) {
+		case 0:
+		case 1:
+			ent.Senses[i].Mp3 = "media/" + audioFiles[0][1]
+		default:
+			ent.Senses[i].Mp3 = mp3cat.concatenateMp3s(audioFiles)
 		}
 	}
+}
+
+func addImages(ent *entry) {
+	var imgs string
+	thumbFiles := thumbMatcher.FindAllStringSubmatch(ent.Head.Str+ent.Head.Str, -1)
+	for _, t := range thumbFiles {
+		if !strings.HasSuffix(imgs, t[1]+"\">") {
+			imgs += fmt.Sprintf(`<img src="media/%s">`, t[1])
+		}
+	}
+	for i := 0; i < len(ent.Senses); i++ {
+		thumbFiles := thumbMatcher.FindAllStringSubmatch(ent.Senses[i].Str, -1)
+		for _, t := range thumbFiles {
+			if !strings.HasSuffix(imgs, t[1]+"\">") {
+				imgs += fmt.Sprintf(`<img src="media/%s">`, t[1])
+			}
+		}
+	}
+	ent.Head.Thumb += template.HTML(imgs)
 }
 
 func applyCleaning(s string) string {
@@ -119,8 +155,8 @@ func applyCleaning(s string) string {
 	return idCleaner.ReplaceAllString(s, "")
 }
 
-func concatenateMp3s(files [][]string) string {
-	sb := new(strings.Builder)
+func (m *mp3cater) concatenateMp3s(files [][]string) string {
+	m.sb.Reset()
 	joiner := mp3join.New()
 	for _, file := range files {
 		f, err := os.Open("media/" + file[1])
@@ -135,9 +171,9 @@ func concatenateMp3s(files [][]string) string {
 		if err := joiner.Append(f); err != nil {
 			panic(err)
 		}
-		sb.WriteString(strings.TrimSuffix(filepath.Base(file[1]), ".mp3"))
+		m.sb.WriteString(strings.TrimSuffix(filepath.Base(file[1]), ".mp3"))
 	}
-	hash := md5.Sum([]byte(sb.String()))
+	hash := md5.Sum([]byte(m.sb.String()))
 	dst := "media/" + hex.EncodeToString(hash[:]) + ".mp3"
 	concat, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -168,7 +204,14 @@ var (
 	idCleaner           = regexp.MustCompile(`id="[^"]+"`)
 	replacer            *strings.Replacer
 	styleApplyer        *strings.Replacer
+	mp3cat              mp3cater
 )
+
+func init() {
+	mp3cat = mp3cater{
+		sb: new(strings.Builder),
+	}
+}
 
 func makeClosingTag(from, to string) []string {
 	return []string{"<" + from, "<" + to, "</" + from, "</" + to}
