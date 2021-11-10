@@ -18,39 +18,9 @@ import (
 	"github.com/hyacinthus/mp3join"
 )
 
-type entryAsset struct {
-	Str  string `xml:",innerxml"`
-	Html template.HTML
-}
-
-type head struct {
-	Str   string `xml:",innerxml"`
-	Html  template.HTML
-	Mp3   string
-	Thumb template.HTML
-}
-
-type sense struct {
-	Str  string `xml:",innerxml"`
-	Html template.HTML
-	Mp3  string
-}
-
-type entry struct {
-	EntryAsset entryAsset `xml:"SE_EntryAssets"`
-	Head       head       `xml:"Head"`
-	Senses     []sense    `xml:"Sense"`
-	Title      string
-}
-
-type mp3cater struct {
-	sb *strings.Builder
-}
-
 func compileAnkiDeck() {
 	textBody()
-	fmt.Println()
-	fmt.Println("Completed")
+	fmt.Printf("\nCompleted.\n")
 }
 
 func textBody() {
@@ -64,7 +34,11 @@ func textBody() {
 		panic(err)
 	}
 	defer anki.Close()
-	t := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
+	t := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}"
+	t += "{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
+	t += "{{range $p := .PhrasalVerbs}}{{$t := $p.Title}}{{$m := $p.Head.Mp3}}{{$senses := $p.Senses}}"
+	t += "{{range $i,$v := $p.Senses}}{{$t}}{{inc $i $senses}} <i>phv</i>\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t\t{{$v.Html}}<hr>\n{{end}}"
+	t += "{{end}}"
 	funcMap := template.FuncMap{
 		"inc": func(i int, senses []sense) string {
 			if len(senses) > 1 {
@@ -79,7 +53,7 @@ func textBody() {
 		panic(err)
 	}
 	for i, xml := range xmls {
-		if i%64 == 0 {
+		if i%64 == 0 || i == len(xmls)-1 {
 			fmt.Printf("\r adding to your anki file.. %s", xml)
 		}
 		addXmlToAnki(xml, anki, tmpl)
@@ -98,6 +72,13 @@ func addXmlToAnki(docFile string, anki *os.File, tmpl *template.Template) {
 	addImages(&ent)
 	formatXml(&ent)
 	mapStrToHtml(&ent)
+	for i := 0; i < len(ent.PhrasalVerbs); i++ {
+		phr := &ent.PhrasalVerbs[i]
+		phr.Title = template.HTML(phrTitleCleaner.Replace(phvTitleMatcher.FindStringSubmatch(phr.Head.Str)[1]))
+		addMp3s(phr)
+		formatXml(phr)
+		mapStrToHtml(phr)
+	}
 	out := new(bytes.Buffer)
 	tmpl.Execute(out, ent)
 	if _, err = anki.WriteString(out.String()); err != nil {
@@ -105,26 +86,30 @@ func addXmlToAnki(docFile string, anki *os.File, tmpl *template.Template) {
 	}
 }
 
-func formatXml(ent *entry) {
-	ent.Head.Str = applyCleaning(ent.Head.Str)
-	for i := 0; i < len(ent.Senses); i++ {
-		ent.Senses[i].Str = applyCleaning(ent.Senses[i].Str)
+func formatXml(d doc) {
+	if d.useHeading() {
+		d.setStrHeading(applyCleaning(d.heading()))
+	}
+	senses := d.senses()
+	for i := 0; i < len(senses); i++ {
+		senses[i].Str = applyCleaning(senses[i].Str)
 	}
 }
 
-func addMp3s(ent *entry) {
-	titleAudio := titleAudioMatcher.FindStringSubmatch(ent.Head.Str)
+func addMp3s(d doc) {
+	titleAudio := titleAudioMatcher.FindStringSubmatch(d.heading())
 	if titleAudio != nil {
-		ent.Head.Mp3 = titleAudio[1]
+		d.setTitleAudio(titleAudio[1])
 	}
-	for i := 0; i < len(ent.Senses); i++ {
-		audioFiles := exampleAudioMatcher.FindAllStringSubmatch(ent.Senses[i].Str, -1)
+	senses := d.senses()
+	for i := 0; i < len(senses); i++ {
+		audioFiles := exampleAudioMatcher.FindAllStringSubmatch((senses)[i].Str, -1)
 		switch len(audioFiles) {
 		case 0:
 		case 1:
-			ent.Senses[i].Mp3 = "media/" + audioFiles[0][1]
+			(senses)[i].Mp3 = "media/" + audioFiles[0][1]
 		default:
-			ent.Senses[i].Mp3 = mp3cat.concatenateMp3s(audioFiles)
+			(senses)[i].Mp3 = mp3cat.concatenateMp3s(audioFiles)
 		}
 	}
 }
@@ -152,7 +137,8 @@ func applyCleaning(s string) string {
 	s = replacer.Replace(styleApplyer.Replace(s))
 	s = selfClosingMatcher.ReplaceAllString(s, "")
 	s = asFilterMatcher.ReplaceAllString(s, "")
-	return idCleaner.ReplaceAllString(s, "")
+	s = idCleaner.ReplaceAllString(s, "")
+	return entryAssetCleaner.ReplaceAllString(s, "")
 }
 
 func (m *mp3cater) concatenateMp3s(files [][]string) string {
@@ -186,24 +172,29 @@ func (m *mp3cater) concatenateMp3s(files [][]string) string {
 	return dst
 }
 
-func mapStrToHtml(et *entry) {
-	et.EntryAsset.Html = template.HTML(et.EntryAsset.Str)
-	et.Head.Html = template.HTML(et.Head.Str)
-	for i := 0; i < len(et.Senses); i++ {
-		et.Senses[i].Html = template.HTML(et.Senses[i].Str)
+func mapStrToHtml(d doc) {
+	if d.useHeading() {
+		d.setHtmlHeading(template.HTML(d.heading()))
+	}
+	senses := d.senses()
+	for i := 0; i < len(senses); i++ {
+		senses[i].Html = template.HTML(senses[i].Str)
 	}
 }
 
 var (
 	titleMatcher        = regexp.MustCompile(`<hwd>(.*?)</hwd>`)
+	phvTitleMatcher     = regexp.MustCompile(`<PHRVBHWD[^>]*>(.*?)</PHRVBHWD>`)
 	titleAudioMatcher   = regexp.MustCompile(`resource="GB_HWD_PRON".*?topic="(.*?\.mp3)"`)
 	exampleAudioMatcher = regexp.MustCompile(`resource="EXA_PRON".*?topic="(.*?\.mp3)"`)
 	selfClosingMatcher  = regexp.MustCompile(`<span [^>]+?/>"`)
 	asFilterMatcher     = regexp.MustCompile(`as_filter="[^"]+"`)
 	thumbMatcher        = regexp.MustCompile(`thumb="(thumbnail/[^"]+?)"`)
 	idCleaner           = regexp.MustCompile(`id="[^"]+"`)
+	entryAssetCleaner   = regexp.MustCompile(`<EntryAssets.*</EntryAssets>`)
 	replacer            *strings.Replacer
 	styleApplyer        *strings.Replacer
+	phrTitleCleaner     = strings.NewReplacer("<span> </span>", "", "<OBJECT>", "<span style='padding:4px;color:#383838;font-style:italic;'>", "</OBJECT>", "</span>")
 	mp3cat              mp3cater
 )
 
@@ -268,5 +259,6 @@ func init() {
 	replaceMap = append(replaceMap, makeClosingTag("BREQUIV", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("GEO", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("LINKWORD", "span")...)
+	replaceMap = append(replaceMap, "<span> </span>", "")
 	replacer = strings.NewReplacer(replaceMap...)
 }

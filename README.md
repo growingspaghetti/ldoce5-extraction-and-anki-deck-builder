@@ -25,7 +25,7 @@ In order to open media files with Anki, you need to move the **media** directory
 
 ![anki-preview-5.png](./anki-preview-5.png)
 
-They are the screen captures of what you see when the anki file building has been completed. There are 86k mini entries, and its file size sums up to about 110 MB.
+They are the screen captures of what you see when the anki file building has been completed. There are 91k mini entries, and its file size sums up to about 100 MB.
 
 ![anki-preview-7.png](./anki-preview-7.png)<br>![anki-preview-9.png](./anki-preview-9.png)
 
