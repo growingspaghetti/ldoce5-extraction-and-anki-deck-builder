@@ -74,3 +74,17 @@ PAGESIZE = 256
 
 That is,
 [[1 byte: type info][4 bytes: file content segment offset][3 bytes: -][2 bytes: -][2 bytes: -][2 bytes: pointer to parent directory]]
+
+----
+
+This advanced learner's dictionary doesn't contain a good amount of patterns. For instance, https://idioms.thefreedictionary.com/bruit+about isn't included. At some point, it would be more efficient to use your time with WordNet https://github.com/growingspaghetti/websters-1913-console-dictionary https://dbmx.net/dict/wordnet.tsv, the Farlex idiom dictionary https://www.amazon.co.jp/Farlex-Idioms-Slang-Dictionary-Collection-ebook/dp/B0768WSZ9C, and the Gmail grammar check.
+
+![non-ldoce.png](./non-ldoce.png)
+
+![wordnet.png](./wordnet.png)
+
+WordNet tsv was compiled by https://github.com/estraier/tkrzw-dict as I already put the link with the `.tsv` extension; and I added a little bit of color flavours in HTML: [wordnettsv.tab.zip](./wordnettsv.tab.zip)
+
+![startdict.png](./stardict.png)
+
+[wntsv.zip](./wntsv.zip) is that in the startdict format.
