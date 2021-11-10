@@ -109,7 +109,7 @@ func addMp3s(d doc) {
 		case 1:
 			(senses)[i].Mp3 = "media/" + audioFiles[0][1]
 		default:
-			(senses)[i].Mp3 = mp3cat.concatenateMp3s(audioFiles)
+			(senses)[i].Mp3 = concatenateMp3s(audioFiles)
 		}
 	}
 }
@@ -141,8 +141,8 @@ func applyCleaning(s string) string {
 	return entryAssetCleaner.ReplaceAllString(s, "")
 }
 
-func (m *mp3cater) concatenateMp3s(files [][]string) string {
-	m.sb.Reset()
+func concatenateMp3s(files [][]string) string {
+	var sb strings.Builder
 	joiner := mp3join.New()
 	for _, file := range files {
 		f, err := os.Open("media/" + file[1])
@@ -157,9 +157,9 @@ func (m *mp3cater) concatenateMp3s(files [][]string) string {
 		if err := joiner.Append(f); err != nil {
 			panic(err)
 		}
-		m.sb.WriteString(strings.TrimSuffix(filepath.Base(file[1]), ".mp3"))
+		sb.WriteString(strings.TrimSuffix(filepath.Base(file[1]), ".mp3"))
 	}
-	hash := md5.Sum([]byte(m.sb.String()))
+	hash := md5.Sum([]byte(sb.String()))
 	dst := "media/" + hex.EncodeToString(hash[:]) + ".mp3"
 	concat, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -195,7 +195,6 @@ var (
 	replacer            *strings.Replacer
 	styleApplyer        *strings.Replacer
 	phrTitleCleaner     = strings.NewReplacer("<span> </span>", "", "<OBJECT>", "<span style='padding:4px;color:#383838;font-style:italic;'>", "</OBJECT>", "</span>")
-	mp3cat              mp3cater
 )
 
 func makeClosingTag(from, to string) []string {
@@ -207,10 +206,6 @@ func makePaddingAttriubute(tag string) []string {
 }
 
 func init() {
-	mp3cat = mp3cater{
-		sb: new(strings.Builder),
-	}
-
 	styleMap := make([]string, 0)
 	styleMap = append(styleMap, "<HWD", "<HWD style='color:#585800;'")
 	styleMap = append(styleMap, "class=\"sensenum\"", "style='padding:5px;font-weight:bold;'")

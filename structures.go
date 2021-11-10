@@ -2,7 +2,6 @@ package main
 
 import (
 	"html/template"
-	"strings"
 )
 
 type entryAsset struct {
@@ -44,10 +43,6 @@ type doc interface {
 	useHeading() bool
 	setTitleAudio(string)
 	senses() []sense
-}
-
-type mp3cater struct {
-	sb *strings.Builder
 }
 
 func (p *phrasalverb) useHeading() bool {
