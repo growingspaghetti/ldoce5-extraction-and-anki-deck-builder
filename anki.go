@@ -79,7 +79,7 @@ func textBody() {
 		panic(err)
 	}
 	for i, xml := range xmls {
-		if i%100 == 0 {
+		if i%64 == 0 {
 			fmt.Printf("\r adding to your anki file.. %s", xml)
 		}
 		addXmlToAnki(xml, anki, tmpl)
@@ -207,12 +207,6 @@ var (
 	mp3cat              mp3cater
 )
 
-func init() {
-	mp3cat = mp3cater{
-		sb: new(strings.Builder),
-	}
-}
-
 func makeClosingTag(from, to string) []string {
 	return []string{"<" + from, "<" + to, "</" + from, "</" + to}
 }
@@ -222,6 +216,10 @@ func makePaddingAttriubute(tag string) []string {
 }
 
 func init() {
+	mp3cat = mp3cater{
+		sb: new(strings.Builder),
+	}
+
 	styleMap := make([]string, 0)
 	styleMap = append(styleMap, "<HWD", "<HWD style='color:#585800;'")
 	styleMap = append(styleMap, "class=\"sensenum\"", "style='padding:5px;font-weight:bold;'")
