@@ -29,7 +29,7 @@ They are the screen captures of what you see when the anki file building has bee
 
 ![anki-preview-7.png](./anki-preview-7.png)<br>![anki-preview-9.png](./anki-preview-9.png)
 
-When you import these entries into your Anki, don't forget to select the "Import even if existing note has same first field" option.
+When you import these entries into your Anki, don't forget to select the "Import even if existing note has same first field" option. Data has **5 fields**.
 
 ![ldoce-preview-10.png](./ldoce-preview-10.png)
 
