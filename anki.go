@@ -259,6 +259,6 @@ func init() {
 	replaceMap = append(replaceMap, makeClosingTag("BREQUIV", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("GEO", "span")...)
 	replaceMap = append(replaceMap, makeClosingTag("LINKWORD", "span")...)
-	replaceMap = append(replaceMap, "<span> </span>", "")
+	replaceMap = append(replaceMap, "<span> </span>", " ")
 	replacer = strings.NewReplacer(replaceMap...)
 }
