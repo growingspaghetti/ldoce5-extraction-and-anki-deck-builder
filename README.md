@@ -64,16 +64,16 @@ $NAME = DATA
 $NAME,OFFSET        = U24
 $TITLE = DATA
 $TITLE,OFFSET       = USHORT
-$A_FILE = USHORT
+$A_FILE             = USHORT
 $TEXTTITLE = DATA
 $TEXTTITLE,OFFSET   = USHORT
 $A_DIRS             = USHORT
 PAGESIZE = 256
 ```
-... The corresponding .dat file has a reading cycle of 1+4+3+2+2+2=14 byte-length seeking. The occurence of information is corresponding to this description as well. 
+... The corresponding .dat file has a reading cycle of 1+4+3+2+2+2+2=16 byte-length seeking. The occurence of information is corresponding to this description as well. 
 
 That is,
-[[1 byte: type info][4 bytes: file content segment offset][3 bytes: -][2 bytes: -][2 bytes: -][2 bytes: pointer to parent directory]]
+[[1 byte: type info][4 bytes: file content segment offset][3 bytes: -][2 bytes: -][2 bytes: -][2 bytes: -][2 bytes: pointer to parent directory]]
 
 ----
 ![rust-console-dictionary.png](./rust-console-dictionary.png)
