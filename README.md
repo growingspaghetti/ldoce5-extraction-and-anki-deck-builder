@@ -38,6 +38,12 @@ When you import these entries into your Anki, don't forget to select the "Import
 
 ---
 
+[Hacking Anki v2.1.15 to skip questions](https://gist.github.com/growingspaghetti/65bdace87e963e89cd01a1daff3d96e3)
+
+When you begin to use this LDOCE deck, first, you'd want to sift through cards since you know a lot of them already.
+
+---
+
 このソフトはLDOCE5のDVDデータを抽出し、超巨大なAnki用単語帳を作成するソフトです。
 
 桐原書店により出版された書籍で動作を確認しております。例文を含めた全音声をAnki用の単語帳**anki.html**に含めます。区切り文字はタブです。メディアファイルは**media**ディレクトリ以下に抽出されているため、これをAnkiのcollection.mediaディレクトリに配置して下さい。
