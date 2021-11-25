@@ -56,7 +56,9 @@ Thanks to the author of https://github.com/ciscorn/ldoce5viewer/blob/master/ldoc
 
 ![anki-preview-6.jpg](./anki-preview-6.jpg)
 
-One of the tricky points was that it wasn't the end of the process that I decompressed data by slicing the concatenated content.tda with zlib reader. It became raw, nevertheless the resulting chunk was also in the form of concatenated files. To slice it into proper files with paths, it was required to seek the segmentation info alongside with the directory-entry-relation table.
+One of the tricky points was that it wasn't the end of the process that I decompressed data by slicing the concatenated content.tda with zlib reader. It became raw, nevertheless the resulting chunk was also in the form of concatenated files. To slice it into proper files with paths, it was required to seek the segmentation info alongside with the directory-entry-relation table as with a special case of the set-of-edges graph representation.
+
+![special-case-of-adjacency-list.png](./special-case-of-adjacency-list.png)
 
 The order of block alignment is straight forward for the fact that it agrees with the one written in config.cft.
 
