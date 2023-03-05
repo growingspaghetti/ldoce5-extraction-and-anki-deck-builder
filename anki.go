@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +21,7 @@ import (
 
 func compileAnkiDeck() {
 	textBody()
-	fmt.Printf("\nCompleted.\n")
+	fmt.Printf("\n全ての処理が終了しました。anki.tsvファイルをAnkiでimportし、ここにあるmediaフォルダをAnkiユーザーのcollection.mediaフォルダの下に移動してください。\n")
 }
 
 func textBody() {
@@ -29,11 +30,6 @@ func textBody() {
 	if err != nil {
 		panic(err)
 	}
-	anki, err := os.OpenFile("anki.html", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer anki.Close()
 	t := "{{$t := .Title}}{{$h := .Head.Html}}{{$m := .Head.Mp3}}{{$img := .Head.Thumb}}{{$senses := .Senses}}"
 	t += "{{range $i,$v := .Senses}}{{$t}}{{inc $i $senses}}\t[sound:media/{{$m}}]\t[sound:{{$v.Mp3}}]\t{{$img}}\t{{$v.Html}}<hr style='width:50%'>{{$h}}<hr>\n{{end}}"
 	t += "{{range $p := .PhrasalVerbs}}{{$t := $p.Title}}{{$m := $p.Head.Mp3}}{{$senses := $p.Senses}}"
@@ -42,7 +38,7 @@ func textBody() {
 	funcMap := template.FuncMap{
 		"inc": func(i int, senses []sense) string {
 			if len(senses) > 1 {
-				return fmt.Sprintf("(%d)", i+1)
+				return fmt.Sprintf(" [%d]", i+1)
 			} else {
 				return ""
 			}
@@ -52,15 +48,19 @@ func textBody() {
 	if err != nil {
 		panic(err)
 	}
+	var buf bytes.Buffer
 	for i, xml := range xmls {
 		if i%64 == 0 || i == len(xmls)-1 {
-			fmt.Printf("\r adding to your anki file.. %s", xml)
+			fmt.Printf("\r anki.tsvファイルに書き込む準備をしています.. %s", xml)
 		}
-		addXmlToAnki(xml, anki, tmpl)
+		buf.WriteString(fillTemplate(xml, tmpl))
+	}
+	if err := ioutil.WriteFile("anki.tsv", buf.Bytes(), 0644); err != nil {
+		log.Fatalf("failed to write %s", err)
 	}
 }
 
-func addXmlToAnki(docFile string, anki *os.File, tmpl *template.Template) {
+func fillTemplate(docFile string, tmpl *template.Template) string {
 	doc, err := ioutil.ReadFile(docFile)
 	if err != nil {
 		panic(err)
@@ -81,9 +81,7 @@ func addXmlToAnki(docFile string, anki *os.File, tmpl *template.Template) {
 	}
 	out := new(bytes.Buffer)
 	tmpl.Execute(out, ent)
-	if _, err = anki.WriteString(out.String()); err != nil {
-		panic(err)
-	}
+	return emptyMp3TagCleaner.Replace(out.String())
 }
 
 func formatXml(d doc) {
@@ -194,6 +192,7 @@ var (
 	entryAssetCleaner   = regexp.MustCompile(`<EntryAssets.*</EntryAssets>`)
 	replacer            *strings.Replacer
 	styleApplyer        *strings.Replacer
+	emptyMp3TagCleaner  *strings.Replacer
 	phrTitleCleaner     = strings.NewReplacer("<span> </span>", "", "<OBJECT>", "<span style='padding:4px;color:#383838;font-style:italic;'>", "</OBJECT>", "</span>")
 )
 
@@ -256,4 +255,6 @@ func init() {
 	replaceMap = append(replaceMap, makeClosingTag("LINKWORD", "span")...)
 	replaceMap = append(replaceMap, "<span> </span>", " ")
 	replacer = strings.NewReplacer(replaceMap...)
+
+	emptyMp3TagCleaner = strings.NewReplacer("[sound:]", "", "[sound:media/]", "")
 }

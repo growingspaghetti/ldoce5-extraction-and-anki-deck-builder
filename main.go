@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -251,21 +252,16 @@ func buildPath(directories map[int]directory, root segmentfile) string {
 	}
 }
 
-var (
-	dataPath string = "/home/ryoji/archive/ldoce5/ldoce5.data/"
-)
+const DataPath string = "ldoce5.data/"
 
 func extractData() {
-	if len(os.Args) > 1 {
-		dataPath = os.Args[1]
-		if !strings.HasSuffix(dataPath, "/") {
-			dataPath += "/"
-		}
+	if _, err := os.Stat(DataPath); os.IsNotExist(err) {
+		log.Fatal("ldoce5.dataフォルダが見つかりません。DVDからコピーしてgauld-lang-syne.exeの真横に置いてください。")
 	}
 
 	fmt.Println("extracting title audio files")
 	titleAudioSet := byteblockSettings{
-		target:    dataPath + "gb_hwd_pron.skn",
+		target:    DataPath + "gb_hwd_pron.skn",
 		assetType: "media",
 		// U24+USHORT+USHORT+USHORT=3+2+2+2
 		directoryBlockLen:    9,
@@ -282,7 +278,7 @@ func extractData() {
 
 	fmt.Println("extracting example audio files")
 	exampleAudioSet := byteblockSettings{
-		target:    dataPath + "exa_pron.skn",
+		target:    DataPath + "exa_pron.skn",
 		assetType: "media",
 		// USHORT+UBYTE+U24+UBYTE=2+1+3+1
 		directoryBlockLen:    7,
@@ -299,7 +295,7 @@ func extractData() {
 
 	fmt.Println("extracting image files")
 	imageSet := byteblockSettings{
-		target:    dataPath + "picture.skn",
+		target:    DataPath + "picture.skn",
 		assetType: "media",
 		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
 		directoryBlockLen:    8,
@@ -316,7 +312,7 @@ func extractData() {
 
 	fmt.Println("extracting main text files")
 	mainTextSet := byteblockSettings{
-		target:    dataPath + "fs.skn",
+		target:    DataPath + "fs.skn",
 		assetType: "text",
 		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
 		directoryBlockLen:    8,
@@ -330,57 +326,6 @@ func extractData() {
 		fileParentEnd:      18,
 	}
 	extract(mainTextSet)
-
-	fmt.Println("extracting the text for common errors")
-	commonErrorSet := byteblockSettings{
-		target:    dataPath + "common_errors.skn",
-		assetType: "common-errors",
-		// UBYTE+UBYTE+USHORT+UBYTE=1+1+2+1
-		directoryBlockLen:    5,
-		directoryParentBegin: 4,
-		directoryParentEnd:   5,
-		// UBYTE+U24+USHORT+USHORT+USHORT+USHORT+UBYTE=1+3+2+2+2+2+1
-		fileBlockLen:       13,
-		fileRawOffsetBegin: 1,
-		fileRawOffsetEnd:   4,
-		fileParentBegin:    12,
-		fileParentEnd:      13,
-	}
-	extract(commonErrorSet)
-
-	fmt.Println("extracting collocations")
-	collocationSet := byteblockSettings{
-		target:    dataPath + "collocations.skn",
-		assetType: "collocations",
-		// USHORT+USHORT+USHORT+USHORT=2+2+2+2
-		directoryBlockLen:    8,
-		directoryParentBegin: 6,
-		directoryParentEnd:   8,
-		// UBYTE+ULONG+U24+U24+USHORT+U24+USHORT=1+4+3+3+2+3+2
-		fileBlockLen:       18,
-		fileRawOffsetBegin: 1,
-		fileRawOffsetEnd:   5,
-		fileParentBegin:    16,
-		fileParentEnd:      18,
-	}
-	extract(collocationSet)
-
-	fmt.Println("extracting word lists")
-	wordListSet := byteblockSettings{
-		target:    dataPath + "word_lists.skn",
-		assetType: "word-lists",
-		// UBYTE+UBYTE+UBYTE+UBYTE=1+1+1+1
-		directoryBlockLen:    4,
-		directoryParentBegin: 3,
-		directoryParentEnd:   4,
-		// UBYTE+U24+UBYTE+UBYTE+UBYTE+UBYTE+UBYTE=1+3+1+1+1+1+1
-		fileBlockLen:       9,
-		fileRawOffsetBegin: 1,
-		fileRawOffsetEnd:   4,
-		fileParentBegin:    8,
-		fileParentEnd:      9,
-	}
-	extract(wordListSet)
 }
 
 func main() {
